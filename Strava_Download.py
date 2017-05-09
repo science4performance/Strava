@@ -18,27 +18,36 @@ Using stravalib to access leaderboard database
 import matplotlib.pylab as plt
 import pandas as pd
 import stravalib
+import requests
+import numpy as np
 
-def get_strava_leaderboard( top=1000, segment_id=610040, gender=None, age_group=None,                                       weight_class=None, following=None, club_id=None, timeframe=None, top_results_limit=200, page=None, context_entries=0):
-    """ segment_id is the integer identifier used by Strava
-        top is the number of entries from the top of the leaderboard"""
+def get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt'):
+    """Retrieve API token from text file"""
     try:
-        f = open( 'mytoken.txt', 'r' )
+        f = open( tokenFile, 'r' )
         mytoken = f.read()
         f.close()
-        client = stravalib.Client(access_token = mytoken) 
     except:
-        print('access_token required')
+        print('API access token not found')
+        mytoken = None
+    return mytoken
+
+
+def get_strava_leaderboard( top=1000, segment_id=610040, gender=None, age_group=None,                                       weight_class=None, following=None, club_id=None,                                       timeframe=None, top_results_limit=200,                                       page=None, context_entries=0):
+    """ segment is the integer identifier used by Strava
+        top is the number of entries from the top of the leaderboard"""
+    
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
+        client = stravalib.Client(access_token = mytoken) 
+    else:
         return
     
     # Download the first 5 pages of leaderboard with 200 entries per page
     lbPages = {}
     for n in range(int(top/200)):
         try:
-            lbPages[n]=client.get_segment_leaderboard(segment_id=segment_id, gender=gender, age_group=age_group, \
-                                      weight_class=weight_class, following=following, club_id=club_id, \
-                                      timeframe=timeframe, top_results_limit=200, \
-                                      page=n+1, context_entries=context_entries)
+            lbPages[n]=client.get_segment_leaderboard(segment_id=segment_id, gender=gender, age_group=age_group,                                       weight_class=weight_class, following=following, club_id=club_id,                                       timeframe=timeframe, top_results_limit=200,                                       page=n+1, context_entries=context_entries)
         except:
             pass
     
@@ -61,72 +70,113 @@ def get_strava_leaderboard( top=1000, segment_id=610040, gender=None, age_group=
     
     return LB
 
-# Get a segment's leaderboard and pickle it
 def pickle_strava_leaderboard(segment=610040):
+    """Get a segment's leaderboard and pickle it"""
     LB = get_strava_leaderboard(segment) 
     LB.to_pickle('/Users/Gavin/Gavin/jupyter/Strava/'+str(segment)+'_LB.pkl')
     return LB
 
 
-# Get geographic data about a segment 
-def get_strava_segment(segment=610040):
-    """ Returns dataframe of stream data for altitude, distance, latitude, longitude
-        segment is the integer identifier used by Strava
-        top is the number of entries from the top of the leaderboard"""
-    try:
-        f = open( 'mytoken.txt', 'r' )
-        mytoken = f.read()
-        f.close()
-        client = stravalib.Client(access_token = mytoken) 
-    except:
-        print('access_token required')
-        return
+def parseStream(stream):
+    """Convert a Strava stream into a pandas DataFrame (converted to metric )"""
+    Dict = {}
+    for k in stream.keys():
+        if k == 'latlng':                
+            [lat,lng] = list(zip(*stream['latlng'].data))
+            Dict['lat'] = list(lat)
+            Dict['lon'] = list(lng)
+        elif k in ['distance', 'altitude', 'velocity_smooth']:
+            Dict[k] = [float(stravalib.unithelper.meters(d)) for d in stream[k].data]
+        else:    
+            Dict[k] = stream[k].data
+    return pd.DataFrame(Dict)
 
-    segmentStream = client.get_segment_streams(segment,['distance', 'altitude','latlng'])
-
-    segmentDict = {}
-    [lat,lng] = list(zip(*segmentStream['latlng'].data))
-    segmentDict['latitude'] = list(lat)
-    segmentDict['longitude'] = list(lng)
-    segmentDict['distance'] = segmentStream['distance'].data
-    segmentDict['altitude'] = segmentStream['altitude'].data
     
-    return pd.DataFrame(segmentDict)
 
+# Get geographic data about a segment 
+def get_strava_segment(segment_id=610040):
+    """ Returns dataframe of segment stream data 
+        segmentID is the integer identifier used by Strava"""
 
-def get_strava_activity(activity_id=76213561,types=['distance']):
-    try:
-        f = open( 'mytoken.txt', 'r' )
-        mytoken = f.read()
-        f.close()
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
         client = stravalib.Client(access_token = mytoken) 
-    except:
-        print('access_token required')
+    else:
         return
 
+    types=['time', 'latlng', 'distance', 'altitude', 'velocity_smooth','heartrate', 'cadence', 'watts', 'temp', 'moving', 'grade_smooth']
+    Stream = client.get_segment_streams(segment_id,types)
+    return parseStream(Stream)
+ 
+
+def get_strava_activity(activity_id=76213561):
+    """ Returns dataframe of active stream data 
+        activityID is the integer identifier used by Strava"""
+
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
+        client = stravalib.Client(access_token = mytoken) 
+    else:
+        return
+
+    types=['time', 'latlng', 'distance', 'altitude', 'velocity_smooth','heartrate', 'cadence', 'watts', 'temp', 'moving', 'grade_smooth']
     Stream = client.get_activity_streams(activity_id,types)
-    Dictionary = {}
-    for i in ['distance']+types:
-        Dictionary[i] = Stream[i].data
-    return pd.DataFrame(Dictionary)
-        
-def get_strava_effort(effort_id=1522793879,types=['distance']):
-    try:
-        f = open( 'mytoken.txt', 'r' )
-        mytoken = f.read()
-        f.close()
+    return parseStream(Stream)
+
+
+def get_strava_effort(effort_id=1522793879):
+    """ Returns dataframe of effort stream data 
+        activityID is the integer identifier used by Strava"""
+
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
         client = stravalib.Client(access_token = mytoken) 
-    except:
-        print('access_token required')
+    else:
         return
 
+    types=['time', 'latlng', 'distance', 'altitude', 'velocity_smooth','heartrate', 'cadence', 'watts', 'temp', 'moving', 'grade_smooth']
     Stream = client.get_effort_streams(effort_id,types)
-    Dictionary = {}
-    for i in ['distance']+types:
-        Dictionary[i] = Stream[i].data
-    return pd.DataFrame(Dictionary)
+    return parseStream(Stream)
    
 
+
+def get_route_stream(route_id = '7570312'):
+    """Special function runs curl request as this does not seem to be available in stravalib"""
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
+        client = stravalib.Client(access_token = mytoken) 
+    else:
+        return
+
+    data = requests.get('https://www.strava.com/api/v3/routes/{id}/streams'.format(id=route_id), headers = {'Authorization':'Bearer {token}'.format(token=mytoken)})
+    df = pd.read_json(data.text)
+    [lat,lon] = np.array(df.data[df.type=='latlng'].values[0]).T
+    distance = df.data[df.type=='distance'].values[0]
+    altitude = df.data[df.type=='altitude'].values[0]
+
+    dfOut = pd.DataFrame({'distance':distance, 'altitude':altitude, 'lat': lat, 'lon': lon}) 
+    dfOut.index.name = 'secs'
+    return dfOut
+
+def createCSVofStravaSegment(segment_id=1158972):
+    segment = get_strava_segment(segment_id)
+    segment.index.name = 'secs'
+    segment.columns=['altitude','distance','lat','lon']
+    file = 'Segment' + str(segment_id) + '.csv'
+    segment.to_csv(file)
+    return file
+
+def createCSVofStravaRoute(route_id=6243168):
+    route = get_route_stream(route_id)
+    file = 'Route' + str(route_id) + '.csv'
+    route.to_csv(file)
+    return file
+    
+def createCSVofStravaActivity(activity_id=971178783):
+    activity = get_strava_activity(activity_id)
+    file = 'Activity' + str(activity_id) + '.csv'
+    activity.to_csv(file)
+    return file
 
 
 # ## Experiment with explore_segments
@@ -147,17 +197,16 @@ def get_strava_effort(effort_id=1522793879,types=['distance']):
 # Whether this segment is starred by authenticated athlete
 # Associated (full) stravalib.model.Segment object.
 
-# In[ ]:
+# In[22]:
 
 def get_strava_explore_segments(coords=[(50,-6),(56,2)]):
-    try:
-        f = open( 'mytoken.txt', 'r' )
-        mytoken = f.read()
-        f.close()
+    """Returns a list of segments inside the box defined by lower left and upper right corners in coords"""
+    mytoken = get_token(tokenFile = '/Users/Gavin/Gavin/Tokens/stravaToken.txt')
+    if mytoken:
         client = stravalib.Client(access_token = mytoken) 
-    except:
-        print('access_token required')
+    else:
         return
+
     segments = client.explore_segments(coords)
     # Choose attributes standard ones and and quantities 
     attributes1 = ['id', 'name', 'climb_category','climb_category_desc','avg_grade']
@@ -169,6 +218,13 @@ def get_strava_explore_segments(coords=[(50,-6),(56,2)]):
 
     return pd.DataFrame(d, columns = attributes)
 
+
+# In[ ]:
+
+
+
+
+# In[ ]:
 
 
 
