@@ -8,8 +8,7 @@
 # The first objective is to download the top entries from the <a href="https://www.strava.com/segments/610040" target="_blank">leaderboard</a>. Since Strava sets a limit of 200 entries per page, it is necessary to perform a number of calls in a loop to download more (if they exist).  This is performed by the function get_strava_leaderboard. The results can be pickled to avoid repeatedly downloading the same data.
 # 
 
-# In[11]:
-
+# In[1]:
 
 """
 Created on Sat Feb 18 14:12:32 2017
@@ -276,7 +275,6 @@ def get_activity_weather(activity_id=1567745926):
 # Associated (full) stravalib.model.Segment object.
 
 # In[22]:
-
 
 def get_strava_explore_segments(coords=[(50,-6),(56,2)]):
     """Returns a list of segments inside the box defined by lower left and upper right corners in coords"""
